@@ -6,41 +6,41 @@
   ******************************************************************************
   * This notice applies to any and all portions of this file
   * that are not between comment pairs USER CODE BEGIN and
-  * USER CODE END. Other portions of this file, whether 
+  * USER CODE END. Other portions of this file, whether
   * inserted by the user or by software development tools
   * are owned by their respective copyright owners.
   *
-  * Copyright (c) 2018 STMicroelectronics International N.V. 
+  * Copyright (c) 2022 STMicroelectronics International N.V.
   * All rights reserved.
   *
-  * Redistribution and use in source and binary forms, with or without 
+  * Redistribution and use in source and binary forms, with or without
   * modification, are permitted, provided that the following conditions are met:
   *
-  * 1. Redistribution of source code must retain the above copyright notice, 
+  * 1. Redistribution of source code must retain the above copyright notice,
   *    this list of conditions and the following disclaimer.
   * 2. Redistributions in binary form must reproduce the above copyright notice,
   *    this list of conditions and the following disclaimer in the documentation
   *    and/or other materials provided with the distribution.
-  * 3. Neither the name of STMicroelectronics nor the names of other 
-  *    contributors to this software may be used to endorse or promote products 
+  * 3. Neither the name of STMicroelectronics nor the names of other
+  *    contributors to this software may be used to endorse or promote products
   *    derived from this software without specific written permission.
-  * 4. This software, including modifications and/or derivative works of this 
+  * 4. This software, including modifications and/or derivative works of this
   *    software, must execute solely and exclusively on microcontroller or
   *    microprocessor devices manufactured by or for STMicroelectronics.
-  * 5. Redistribution and use of this software other than as permitted under 
-  *    this license is void and will automatically terminate your rights under 
-  *    this license. 
+  * 5. Redistribution and use of this software other than as permitted under
+  *    this license is void and will automatically terminate your rights under
+  *    this license.
   *
-  * THIS SOFTWARE IS PROVIDED BY STMICROELECTRONICS AND CONTRIBUTORS "AS IS" 
-  * AND ANY EXPRESS, IMPLIED OR STATUTORY WARRANTIES, INCLUDING, BUT NOT 
-  * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A 
+  * THIS SOFTWARE IS PROVIDED BY STMICROELECTRONICS AND CONTRIBUTORS "AS IS"
+  * AND ANY EXPRESS, IMPLIED OR STATUTORY WARRANTIES, INCLUDING, BUT NOT
+  * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
   * PARTICULAR PURPOSE AND NON-INFRINGEMENT OF THIRD PARTY INTELLECTUAL PROPERTY
-  * RIGHTS ARE DISCLAIMED TO THE FULLEST EXTENT PERMITTED BY LAW. IN NO EVENT 
+  * RIGHTS ARE DISCLAIMED TO THE FULLEST EXTENT PERMITTED BY LAW. IN NO EVENT
   * SHALL STMICROELECTRONICS OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
   * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, 
-  * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF 
-  * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING 
+  * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
+  * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+  * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
   * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
   * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
   *
@@ -63,6 +63,8 @@ CAN_HandleTypeDef hcan;
 IWDG_HandleTypeDef hiwdg;
 
 UART_HandleTypeDef huart2;
+DMA_HandleTypeDef hdma_usart2_tx;
+DMA_HandleTypeDef hdma_usart2_rx;
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
@@ -74,21 +76,18 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_CAN_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_DMA_Init(void);
 static void MX_IWDG_Init(void);
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
-
+void bootloaderSwitcher();
 /* USER CODE END PFP */
 
 /* USER CODE BEGIN 0 */
 
-CanTxMsgTypeDef CanTxBuffer;
-CanRxMsgTypeDef CanRxBuffer;
-
-#define UART_RX_FIFO_SIZE    1
-uint8_t Uart2RxFifo;
-
+#define UART_RX_BUFFER_SIZE    30
+#define TYPE_ID 0x16
 
 typedef struct tcanRxFlags {
 	union {
@@ -101,11 +100,15 @@ typedef struct tcanRxFlags {
 	uint8_t activefifo;
 } tcanRx;
 
+CanTxMsgTypeDef CanTxBuffer;
+CanRxMsgTypeDef CanRxBuffer;
+
+uint8_t uart_rxBuffer[UART_RX_BUFFER_SIZE];
 volatile tcanRx canRxFlags;
-void bootloaderSwitcher();
-#define TYPE_ID 0x16
 volatile int32_t serialNumber;
 const uint32_t *uid = (uint32_t *)(UID_BASE + 4);
+static uint8_t rxFullFlag = 0;
+
 /* USER CODE END 0 */
 
 /**
@@ -117,7 +120,7 @@ int main(void)
 {
   /* USER CODE BEGIN 1 */
 	serialNumber = TYPE_ID | (((*uid) << 8) & 0xFFFFFF00);
-	bootloaderSwitcher();
+  bootloaderSwitcher();
   /* USER CODE END 1 */
 
   /* MCU Configuration----------------------------------------------------------*/
@@ -139,54 +142,68 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_CAN_Init();
-//  MX_USART2_UART_Init();
+  MX_DMA_Init();
+  MX_USART2_UART_Init();
   MX_USB_DEVICE_Init();
   MX_IWDG_Init();
   /* USER CODE BEGIN 2 */
 
-	hcan.pTxMsg = &CanTxBuffer;
-	hcan.pRxMsg = &CanRxBuffer;
+  hcan.pTxMsg = &CanTxBuffer;
+  hcan.pRxMsg = &CanRxBuffer;
 
-	canRxFlags.flags.byte = 0;
-	// CAN RX init
-	{
-		slcanClearAllFilters();
+  canRxFlags.flags.byte = 0;
 
-		HAL_NVIC_SetPriority(CEC_CAN_IRQn, 2, 2);
-		HAL_CAN_Receive_IT(&hcan, CAN_FIFO0);
-	}
-	// UART RX
-	{
-//		HAL_UART_Receive_IT(&huart2, &Uart2RxFifo, UART_RX_FIFO_SIZE);
-//		HAL_NVIC_SetPriority(USART2_IRQn, 3, 3);
-//		NVIC_EnableIRQ(USART2_IRQn);
-	}
-	/* Enable USART1 global interrupt */
+// CAN RX init
+  slcanClearAllFilters();
+  HAL_NVIC_SetPriority(CEC_CAN_IRQn, 2, 2);
+  HAL_CAN_Receive_IT(&hcan, CAN_FIFO0);
 
+// UART RX
+
+//enable CR character detection and disable UART RX interrupt
+  USART2->CR1 &= ~USART_CR1_UE;
+  USART2->CR2 |= USART_CR2_ADDM7;
+  USART2->CR2 |= (uint32_t)(0x0D << USART_CR2_ADD_Pos);
+  USART2->CR1 |= USART_CR1_CMIE;
+  USART2->CR1 &= ~USART_CR1_RXNEIE;
+  HAL_Delay(1);
+  USART2->CR1 |= USART_CR1_UE;
+
+// start DMA
+  HAL_UART_Receive_DMA(&huart2, uart_rxBuffer, UART_RX_BUFFER_SIZE);
+
+// enable UART global interrupts
+  HAL_NVIC_SetPriority(USART2_IRQn, 0, 0);
+  NVIC_EnableIRQ(USART2_IRQn);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-	while (1) {
-		slCanCheckCommand(command);
-		slcanOutputFlush();
-		if (canRxFlags.flags.byte != 0) {
-			slcanReciveCanFrame(hcan.pRxMsg);
-			canRxFlags.flags.fifo1 = 0;
-			HAL_CAN_Receive_IT(&hcan, CAN_FIFO0);
-		}
+  initCanOnStart();
+  while (1)
+  {
+	slCanCheckCommand(command);
+	slcanOutputFlush();
+	if(rxFullFlag)
+	{
+		memset(uart_rxBuffer, 0 , UART_RX_BUFFER_SIZE); //clear the buffer
+		__HAL_UART_FLUSH_DRREGISTER(&huart2); //clear the register
+		HAL_UART_Receive_DMA(&huart2, uart_rxBuffer, UART_RX_BUFFER_SIZE); //resume DMA
+		rxFullFlag = 0;
+	}
+	if (canRxFlags.flags.byte != 0)
+	{
+		slcanReciveCanFrame(hcan.pRxMsg);
+		canRxFlags.flags.fifo1 = 0;
+		HAL_CAN_Receive_IT(&hcan, CAN_FIFO0);
+	}
   /* USER CODE END WHILE */
 
   /* USER CODE BEGIN 3 */
-		HAL_IWDG_Refresh(&hiwdg);
+	HAL_IWDG_Refresh(&hiwdg);
   }
   /* USER CODE END 3 */
 
-}
-
-void HAL_CAN_ErrorCallback(CAN_HandleTypeDef *hcan)
-{
-	HAL_CAN_Receive_IT(hcan, CAN_FIFO0);
 }
 
 /**
@@ -200,7 +217,7 @@ void SystemClock_Config(void)
   RCC_ClkInitTypeDef RCC_ClkInitStruct;
   RCC_PeriphCLKInitTypeDef PeriphClkInit;
 
-    /**Initializes the CPU, AHB and APB busses clocks 
+    /**Initializes the CPU, AHB and APB busses clocks
     */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI48|RCC_OSCILLATORTYPE_LSI;
   RCC_OscInitStruct.HSI48State = RCC_HSI48_ON;
@@ -211,7 +228,7 @@ void SystemClock_Config(void)
     _Error_Handler(__FILE__, __LINE__);
   }
 
-    /**Initializes the CPU, AHB and APB busses clocks 
+    /**Initializes the CPU, AHB and APB busses clocks
     */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1;
@@ -232,11 +249,11 @@ void SystemClock_Config(void)
     _Error_Handler(__FILE__, __LINE__);
   }
 
-    /**Configure the Systick interrupt time 
+    /**Configure the Systick interrupt time
     */
   HAL_SYSTICK_Config(HAL_RCC_GetHCLKFreq()/1000);
 
-    /**Configure the Systick 
+    /**Configure the Systick
     */
   HAL_SYSTICK_CLKSourceConfig(SYSTICK_CLKSOURCE_HCLK);
 
@@ -256,7 +273,7 @@ static void MX_CAN_Init(void)
   hcan.Init.BS2 = CAN_BS2_4TQ;
   hcan.Init.TTCM = DISABLE;
   hcan.Init.ABOM = ENABLE;
-  hcan.Init.AWUM = ENABLE;
+  hcan.Init.AWUM = DISABLE;
   hcan.Init.NART = DISABLE;
   hcan.Init.RFLM = DISABLE;
   hcan.Init.TXFP = DISABLE;
@@ -287,7 +304,7 @@ static void MX_USART2_UART_Init(void)
 {
 
   huart2.Instance = USART2;
-  huart2.Init.BaudRate = 115200;
+  huart2.Init.BaudRate = 2000000;
   huart2.Init.WordLength = UART_WORDLENGTH_8B;
   huart2.Init.StopBits = UART_STOPBITS_1;
   huart2.Init.Parity = UART_PARITY_NONE;
@@ -295,7 +312,8 @@ static void MX_USART2_UART_Init(void)
   huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
   huart2.Init.OverSampling = UART_OVERSAMPLING_16;
   huart2.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  huart2.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  huart2.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_SWAP_INIT;
+  huart2.AdvancedInit.Swap = UART_ADVFEATURE_SWAP_ENABLE;
   if (HAL_UART_Init(&huart2) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
@@ -303,12 +321,22 @@ static void MX_USART2_UART_Init(void)
 
 }
 
-/** Configure pins as 
-        * Analog 
-        * Input 
-        * Output
-        * EVENT_OUT
-        * EXTI
+/**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Channel4_5_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel4_5_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel4_5_IRQn);
+
+}
+
+/** Configure pins
 */
 static void MX_GPIO_Init(void)
 {
@@ -316,7 +344,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitTypeDef GPIO_InitStruct;
 
   /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOF_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
@@ -333,16 +360,36 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+	uint32_t err = huart->ErrorCode;
+	UNUSED(err);
+}
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+	uint32_t err = huart->ErrorCode;
+//	HAL_UART_Transmit(&huart2, sl_frame, sl_frame_len, 100);
+	HAL_UART_Receive_DMA(huart, uart_rxBuffer, UART_RX_BUFFER_SIZE); //resume DMA
+	UNUSED(err);
+}
+void HAL_CAN_ErrorCallback(CAN_HandleTypeDef *hcan)
+{
+	HAL_CAN_Receive_IT(hcan, CAN_FIFO0);
+}
 
-void HAL_CAN_RxCpltCallback(CAN_HandleTypeDef* hcan) {
+void HAL_CAN_RxCpltCallback(CAN_HandleTypeDef* hcan)
+{
 	canRxFlags.flags.fifo1 = 1;
 //    HAL_CAN_Receive_IT(hcan,CAN_FIFO0);
 }
 
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef * huart) {
-//	slCanProccesInput(Uart2RxFifo);
-//	__HAL_UART_FLUSH_DRREGISTER(huart);
-//	HAL_UART_Receive_IT(huart, &Uart2RxFifo, UART_RX_FIFO_SIZE);
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef * huart)
+{
+	rxFullFlag = 1;
+	slCanProccesInputUART((const char*)&uart_rxBuffer); //decode buffer content
+//	memset(uart_rxBuffer, 0 , UART_RX_BUFFER_SIZE); //clear the buffer
+//	HAL_UART_Receive_DMA(huart, uart_rxBuffer, UART_RX_BUFFER_SIZE); //resume DMA
+//	__HAL_UART_FLUSH_DRREGISTER(huart); //clear the register
 }
 
 /* USER CODE END 4 */
@@ -372,7 +419,7 @@ void _Error_Handler(char *file, int line)
   * @retval None
   */
 void assert_failed(uint8_t* file, uint32_t line)
-{ 
+{
   /* USER CODE BEGIN 6 */
   /* User can add his own implementation to report the file name and line number,
     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */

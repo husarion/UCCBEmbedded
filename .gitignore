@@ -26,7 +26,6 @@
 *.app
 *.i*86
 *.x86_64
-*.hex
 
 # Debug files
 *.dSYM/
@@ -37,4 +36,7 @@ TrueSTUDIO/USB_CAN_CONVERTER_BASIC/.settings/com.atollic.truestudio.debug.hardwa
 TrueSTUDIO/USB_CAN_CONVERTER_BASIC/.settings/language.settings.xml
 .mxproject
 TrueSTUDIO/USB_CAN_CONVERTER_BASIC/.settings/language.settings.xml
-/Debug
+/Debug/Drivers
+/Debug/Middlewares
+/Debug/Src
+/Debug/startup

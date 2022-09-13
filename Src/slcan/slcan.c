@@ -12,22 +12,36 @@
 #include "slcan_additional.h"
 #include "usbd_cdc_if.h"
 
-#define SLCAN_BELL 7
-#define SLCAN_CR 13
-#define SLCAN_LR 10
+#define SLCAN_BELL 7 //bell character - warning
+#define SLCAN_CR 13 //return
+#define SLCAN_LR 10 //new line
 
-extern volatile int32_t serialNumber;
+
 // internal slcan_interface state
 static uint8_t state = STATE_CONFIG;
 static uint8_t timestamping = 0;
-
-
 static uint8_t terminator = SLCAN_CR;
-
-extern CAN_HandleTypeDef hcan;
-
-uint8_t sl_frame[32];
 volatile uint8_t sl_frame_len=0;
+uint8_t sl_frame[32];
+
+extern UART_HandleTypeDef huart2;
+extern USBD_HandleTypeDef hUsbDeviceFS;
+extern CAN_HandleTypeDef hcan;
+extern volatile int32_t serialNumber;
+
+void initCanOnStart()
+{
+	slcanSetCANBaudRate(CAN_BR_1M);
+
+	hcan.Init.Mode = CAN_MODE_NORMAL;
+
+	if(CANInit() == HAL_OK)
+	{
+		HAL_NVIC_EnableIRQ(CEC_CAN_IRQn);
+		state = STATE_OPEN;
+	}
+}
+
 /**
   * @brief  Adds data to send buffer
   * @param  c - data to add
@@ -43,7 +57,7 @@ static void slcanSetOutputChar(uint8_t c)
 }
 
 /**
-  * @brief  Add given nible value as hexadecimal string to bufferr
+  * @brief  Add given nible value as hexadecimal string to buffer
   * @param  c - data to add
   * @retval None
   */
@@ -58,41 +72,32 @@ static void slCanSendNibble(uint8_t ch)
   * @param  value - data to add
   * @retval None
   */
-static void slcanSetOutputAsHex(uint8_t ch) {
+static void slcanSetOutputAsHex(uint8_t ch)
+{
 	slCanSendNibble(ch >> 4);
 	slCanSendNibble(ch & 0x0F);
 }
 
-
-extern UART_HandleTypeDef huart2;
+void slcanClose()
+{
+	HAL_NVIC_DisableIRQ(CEC_CAN_IRQn);
+	state = STATE_CONFIG;
+}
 /**
   * @brief  Flush data on active interface
   * @param  None
   * @retval None
   */
-extern USBD_HandleTypeDef hUsbDeviceFS;
-
-
-// frame buffer
-//#define FRAME_BUFFER_SIZE 1024
-//uint8_t frameBuffer[FRAME_BUFFER_SIZE];
-//uint32_t dataToSend = 0;
-
-void slcanClose()
-{
-	HAL_NVIC_DisableIRQ(CEC_CAN_IRQn);
-//	dataToSend = 0;
-//            	todo into slleep
-	state = STATE_CONFIG;
-}
-
 void slcanOutputFlush(void)
 {
 	if (sl_frame_len > 0)
 	{
-//		if (hUsbDeviceFS.dev_state != USBD_STATE_CONFIGURED) // use auxiliary uart only if usb not connected
-//			HAL_UART_Transmit(&huart2,sl_frame,sl_frame_len,100); //ll todo figure out time
-//		else
+		if (hUsbDeviceFS.dev_state != USBD_STATE_CONFIGURED) // use auxiliary uart only if usb not connected
+		{
+			HAL_UART_Transmit_DMA(&huart2,sl_frame,sl_frame_len);
+//			HAL_UART_Transmit(&huart2,sl_frame,sl_frame_len, 100);
+		}
+		else
 		{
 			while (((USBD_CDC_HandleTypeDef*)hUsbDeviceFS.pClassData)->TxState){;} //should change by hardware
 			while (CDC_Transmit_FS(sl_frame, sl_frame_len) != USBD_OK);
@@ -108,9 +113,16 @@ void slcanOutputFlush(void)
   * @retval None
   */
 uint8_t command[LINE_MAXLEN] = {0};
-
+int slCanProccesInputUART(const char* string)
+{
+	//process string
+	memset(command, 0, sizeof(command));
+	memcpy(command,string,strlen(string));
+	return 0;
+}
 int slCanProccesInput(uint8_t ch)
 {
+	//process single character
 	static uint8_t line[LINE_MAXLEN];
 	static uint8_t linepos = 0;
 
@@ -126,7 +138,6 @@ int slCanProccesInput(uint8_t ch)
     }
     return 0;
 }
-
 
 /**
   * @brief  Parse hex value of given string
@@ -240,7 +251,7 @@ uint8_t slCanCheckCommand(uint8_t *line)
                     case '6': slcanSetCANBaudRate(CAN_BR_500K); result = terminator; break;
                     case '7': slcanSetCANBaudRate(CAN_BR_800K); result = terminator; break;
                     case '8': slcanSetCANBaudRate(CAN_BR_1M);   result = terminator; break;
-                    case '9': slcanSetCANBaudRate(CAN_BR_83K);   result = terminator; break;
+                    case '9': slcanSetCANBaudRate(CAN_BR_83K);  result = terminator; break;
 
                 }
             }
@@ -257,7 +268,6 @@ uint8_t slCanCheckCommand(uint8_t *line)
                 uint32_t sjw, bs1, bs2, pre;
                 if (parseHex(&line[1], 2, &sjw) && parseHex(&line[3], 2, &bs1) &&
                 		parseHex(&line[5], 2, &bs2) && parseHex(&line[7], 4, &pre) ) {
-
                 	hcan.Init.SJW = sjw;
                 	hcan.Init.BS1 = bs1;
                 	hcan.Init.BS2 = bs2;
@@ -269,7 +279,6 @@ uint8_t slCanCheckCommand(uint8_t *line)
             break;
         case 'V': // Get hardware version
             {
-
                 slcanSetOutputChar('V');
                 slcanSetOutputAsHex(VERSION_HARDWARE_MAJOR);
                 slcanSetOutputAsHex(VERSION_HARDWARE_MINOR);
@@ -278,10 +287,10 @@ uint8_t slCanCheckCommand(uint8_t *line)
             break;
         case 'v': // Get firmware version
             {
-
                 slcanSetOutputChar('v');
                 slcanSetOutputAsHex(VERSION_FIRMWARE_MAJOR);
                 slcanSetOutputAsHex(VERSION_FIRMWARE_MINOR);
+                slcanSetOutputChar('h');
                 result = terminator;
             }
             break;
@@ -304,21 +313,17 @@ uint8_t slCanCheckCommand(uint8_t *line)
             	if(CANInit() == HAL_OK)
             	{
 					HAL_NVIC_EnableIRQ(CEC_CAN_IRQn);
-	//                clock_reset();
 					state = STATE_OPEN;
 					result = terminator;
             	}
             }
             break;
         case 'l': // Loop-back mode
-//            if (state == STATE_CONFIG)
-            {
             	hcan.Init.Mode = CAN_MODE_LOOPBACK;
             	HAL_NVIC_EnableIRQ(CEC_CAN_IRQn);
             	CANInit();
                 state = STATE_OPEN;
                 result = terminator;
-            }
             break;
         case 'L': // Open CAN channel in listen-only mode
             if (state == STATE_CONFIG)
@@ -331,14 +336,9 @@ uint8_t slCanCheckCommand(uint8_t *line)
             }
             break;
         case 'C': // Close CAN channel
-//            if (state != STATE_CONFIG)
-            {
             	HAL_NVIC_DisableIRQ(CEC_CAN_IRQn);
-//            	dataToSend = 0;
-//            	todo into slleep
                 state = STATE_CONFIG;
                 result = terminator;
-            }
             break;
         case 'r': // Transmit standard RTR (11 bit) frame
         case 'R': // Transmit extended RTR (29 bit) frame

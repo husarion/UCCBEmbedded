@@ -4,7 +4,7 @@
   * @brief   Interrupt Service Routines.
   ******************************************************************************
   *
-  * COPYRIGHT(c) 2018 STMicroelectronics
+  * COPYRIGHT(c) 2022 STMicroelectronics
   *
   * Redistribution and use in source and binary forms, with or without modification,
   * are permitted provided that the following conditions are met:
@@ -36,14 +36,16 @@
 #include "stm32f0xx_it.h"
 
 /* USER CODE BEGIN 0 */
-
+extern IWDG_HandleTypeDef hiwdg;
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
 extern PCD_HandleTypeDef hpcd_USB_FS;
+extern DMA_HandleTypeDef hdma_usart2_tx;
+extern DMA_HandleTypeDef hdma_usart2_rx;
 
 /******************************************************************************/
-/*            Cortex-M0 Processor Interruption and Exception Handlers         */ 
+/*            Cortex-M0 Processor Interruption and Exception Handlers         */
 /******************************************************************************/
 
 /**
@@ -126,6 +128,21 @@ void SysTick_Handler(void)
 /******************************************************************************/
 
 /**
+* @brief This function handles DMA1 channel 4 and 5 interrupts.
+*/
+void DMA1_Channel4_5_IRQHandler(void)
+{
+  /* USER CODE BEGIN DMA1_Channel4_5_IRQn 0 */
+
+  /* USER CODE END DMA1_Channel4_5_IRQn 0 */
+  HAL_DMA_IRQHandler(&hdma_usart2_tx);
+  HAL_DMA_IRQHandler(&hdma_usart2_rx);
+  /* USER CODE BEGIN DMA1_Channel4_5_IRQn 1 */
+
+  /* USER CODE END DMA1_Channel4_5_IRQn 1 */
+}
+
+/**
 * @brief This function handles USB global Interrupt / USB wake-up interrupt through EXTI line 18.
 */
 void USB_IRQHandler(void)
@@ -150,11 +167,14 @@ extern UART_HandleTypeDef huart2;
 void USART2_IRQHandler(void)
 {
 	UART_HandleTypeDef * huart = &huart2;
-//	uint16_t uhMask = huart->Mask;
-//	huart->rx = huart->Instance->RDR & (uint8_t)uhMask;
-//	HAL_UART_RxCpltCallback(&huart2);
-	UART_Receive_IT(huart);
-
+	HAL_IWDG_Refresh(&hiwdg);
+	if((USART2->ISR & USART_ISR_CMF) == USART_ISR_CMF) //character match interrupt
+	{
+		USART2->ICR |= USART_ICR_CMCF;
+		HAL_UART_DMAStop(&huart2);
+		HAL_UART_RxCpltCallback(&huart2);
+	}
+	HAL_UART_IRQHandler(&huart2);
 }
 /* USER CODE END 1 */
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

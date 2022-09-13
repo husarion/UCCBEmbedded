@@ -35,11 +35,12 @@
 #define STATE_CONFIG 0
 #define STATE_LISTEN 1
 #define STATE_OPEN 2
-
+void initCanOnStart();
 void slcanOutputFlush(void);
 void slcanClose();
 uint8_t slcanReciveCanFrame(CanRxMsgTypeDef *pRxMsg);
 int slCanProccesInput(uint8_t ch);
+int slCanProccesInputUART(const char* string);
 uint8_t slCanCheckCommand(uint8_t *line);
 uint8_t slcan_getState(void);
 

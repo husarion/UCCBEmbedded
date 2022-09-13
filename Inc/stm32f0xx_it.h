@@ -4,7 +4,7 @@
   * @brief   This file contains the headers of the interrupt handlers.
   ******************************************************************************
   *
-  * COPYRIGHT(c) 2018 STMicroelectronics
+  * COPYRIGHT(c) 2022 STMicroelectronics
   *
   * Redistribution and use in source and binary forms, with or without modification,
   * are permitted provided that the following conditions are met:
@@ -37,7 +37,7 @@
 
 #ifdef __cplusplus
  extern "C" {
-#endif 
+#endif
 
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f0xx_hal.h"
@@ -52,6 +52,7 @@ void HardFault_Handler(void);
 void SVC_Handler(void);
 void PendSV_Handler(void);
 void SysTick_Handler(void);
+void DMA1_Channel4_5_IRQHandler(void);
 void USB_IRQHandler(void);
 
 #ifdef __cplusplus
