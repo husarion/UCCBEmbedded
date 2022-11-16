@@ -275,57 +275,57 @@ HAL_StatusTypeDef HAL_RCC_OscConfig(RCC_OscInitTypeDef  *RCC_OscInitStruct)
   assert_param(IS_RCC_OSCILLATORTYPE(RCC_OscInitStruct->OscillatorType));
 
   /*------------------------------- HSE Configuration ------------------------*/ 
-//  if(((RCC_OscInitStruct->OscillatorType) & RCC_OSCILLATORTYPE_HSE) == RCC_OSCILLATORTYPE_HSE)
-//  {
-//    /* Check the parameters */
-//    assert_param(IS_RCC_HSE(RCC_OscInitStruct->HSEState));
-//
-//    /* When the HSE is used as system clock or clock source for PLL in these cases it is not allowed to be disabled */
-//    if((__HAL_RCC_GET_SYSCLK_SOURCE() == RCC_SYSCLKSOURCE_STATUS_HSE)
-//       || ((__HAL_RCC_GET_SYSCLK_SOURCE() == RCC_SYSCLKSOURCE_STATUS_PLLCLK) && (__HAL_RCC_GET_PLL_OSCSOURCE() == RCC_PLLSOURCE_HSE)))
-//    {
-//      if((__HAL_RCC_GET_FLAG(RCC_FLAG_HSERDY) != RESET) && (RCC_OscInitStruct->HSEState == RCC_HSE_OFF))
-//      {
-//        return HAL_ERROR;
-//      }
-//    }
-//    else
-//    {
-//      /* Set the new HSE configuration ---------------------------------------*/
-//      __HAL_RCC_HSE_CONFIG(RCC_OscInitStruct->HSEState);
-//
-//
-//       /* Check the HSE State */
-//      if(RCC_OscInitStruct->HSEState != RCC_HSE_OFF)
-//      {
-//        /* Get Start Tick */
-//        tickstart = HAL_GetTick();
-//
-//        /* Wait till HSE is ready */
-//        while(__HAL_RCC_GET_FLAG(RCC_FLAG_HSERDY) == RESET)
-//        {
-//          if((HAL_GetTick() - tickstart ) > HSE_TIMEOUT_VALUE)
-//          {
-//            return HAL_TIMEOUT;
-//          }
-//        }
-//      }
-//      else
-//      {
-//        /* Get Start Tick */
-//        tickstart = HAL_GetTick();
-//
-//        /* Wait till HSE is disabled */
-//        while(__HAL_RCC_GET_FLAG(RCC_FLAG_HSERDY) != RESET)
-//        {
-//           if((HAL_GetTick() - tickstart ) > HSE_TIMEOUT_VALUE)
-//          {
-//            return HAL_TIMEOUT;
-//          }
-//        }
-//      }
-//    }
-//  }
+  if(((RCC_OscInitStruct->OscillatorType) & RCC_OSCILLATORTYPE_HSE) == RCC_OSCILLATORTYPE_HSE)
+  {
+    /* Check the parameters */
+    assert_param(IS_RCC_HSE(RCC_OscInitStruct->HSEState));
+
+    /* When the HSE is used as system clock or clock source for PLL in these cases it is not allowed to be disabled */
+    if((__HAL_RCC_GET_SYSCLK_SOURCE() == RCC_SYSCLKSOURCE_STATUS_HSE)
+       || ((__HAL_RCC_GET_SYSCLK_SOURCE() == RCC_SYSCLKSOURCE_STATUS_PLLCLK) && (__HAL_RCC_GET_PLL_OSCSOURCE() == RCC_PLLSOURCE_HSE)))
+    {
+      if((__HAL_RCC_GET_FLAG(RCC_FLAG_HSERDY) != RESET) && (RCC_OscInitStruct->HSEState == RCC_HSE_OFF))
+      {
+        return HAL_ERROR;
+      }
+    }
+    else
+    {
+      /* Set the new HSE configuration ---------------------------------------*/
+      __HAL_RCC_HSE_CONFIG(RCC_OscInitStruct->HSEState);
+
+
+       /* Check the HSE State */
+      if(RCC_OscInitStruct->HSEState != RCC_HSE_OFF)
+      {
+        /* Get Start Tick */
+        tickstart = HAL_GetTick();
+
+        /* Wait till HSE is ready */
+        while(__HAL_RCC_GET_FLAG(RCC_FLAG_HSERDY) == RESET)
+        {
+          if((HAL_GetTick() - tickstart ) > HSE_TIMEOUT_VALUE)
+          {
+            return HAL_TIMEOUT;
+          }
+        }
+      }
+      else
+      {
+        /* Get Start Tick */
+        tickstart = HAL_GetTick();
+
+        /* Wait till HSE is disabled */
+        while(__HAL_RCC_GET_FLAG(RCC_FLAG_HSERDY) != RESET)
+        {
+           if((HAL_GetTick() - tickstart ) > HSE_TIMEOUT_VALUE)
+          {
+            return HAL_TIMEOUT;
+          }
+        }
+      }
+    }
+  }
 //  /*----------------------------- HSI Configuration --------------------------*/
 //  if(((RCC_OscInitStruct->OscillatorType) & RCC_OSCILLATORTYPE_HSI) == RCC_OSCILLATORTYPE_HSI)
 //  {

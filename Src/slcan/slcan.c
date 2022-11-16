@@ -21,7 +21,9 @@
 static uint8_t state = STATE_CONFIG;
 static uint8_t timestamping = 0;
 static uint8_t terminator = SLCAN_CR;
+static uint8_t UART_FLAG = 0;
 volatile uint8_t sl_frame_len=0;
+
 uint8_t sl_frame[32];
 
 extern UART_HandleTypeDef huart2;
@@ -115,6 +117,7 @@ void slcanOutputFlush(void)
 uint8_t command[LINE_MAXLEN] = {0};
 int slCanProccesInputUART(const char* string)
 {
+	UART_FLAG = 1;
 	//process string
 	memset(command, 0, sizeof(command));
 	memcpy(command,string,strlen(string));
@@ -336,9 +339,12 @@ uint8_t slCanCheckCommand(uint8_t *line)
             }
             break;
         case 'C': // Close CAN channel
-            	HAL_NVIC_DisableIRQ(CEC_CAN_IRQn);
-                state = STATE_CONFIG;
-                result = terminator;
+        		if(UART_FLAG == 0)
+        		{
+        			HAL_NVIC_DisableIRQ(CEC_CAN_IRQn);
+					state = STATE_CONFIG;
+					result = terminator;
+        		}
             break;
         case 'r': // Transmit standard RTR (11 bit) frame
         case 'R': // Transmit extended RTR (29 bit) frame

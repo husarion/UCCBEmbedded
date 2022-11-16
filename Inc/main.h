@@ -70,7 +70,8 @@
 /* #define USE_FULL_ASSERT    1U */
 
 /* USER CODE BEGIN Private defines */
-
+#define LED_Pin GPIO_PIN_10
+#define LED_GPIO_Port GPIOB
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
