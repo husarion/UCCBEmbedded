@@ -72,6 +72,7 @@
 /* USER CODE BEGIN Private defines */
 #define LED_Pin GPIO_PIN_10
 #define LED_GPIO_Port GPIOB
+#define CAN_RX_BUFFER_SIZE 3
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
