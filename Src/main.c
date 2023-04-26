@@ -55,6 +55,7 @@
 #include "usbd_cdc_if.h"
 #include "slcan/slcan.h"
 #include "slcan/slcan_additional.h"
+
 /* USER CODE END Includes */
 
 /* Private variables ---------------------------------------------------------*/
@@ -103,7 +104,17 @@ typedef struct tcanRxFlags {
 CanTxMsgTypeDef CanTxBuffer;
 CanRxMsgTypeDef CanRxBuffer;
 
-uint8_t uart_rxBuffer[UART_RX_BUFFER_SIZE];
+
+typedef struct
+{
+	uint8_t bufferActive  :1;
+	uint8_t bufferCleared :1;
+	uint8_t data[UART_RX_BUFFER_SIZE];
+}uart_buffer;
+uint8_t activeBuffer = 0;
+
+uart_buffer uart_buffers[2];
+
 volatile tcanRx canRxFlags;
 volatile int32_t serialNumber;
 const uint32_t *uid = (uint32_t *)(UID_BASE + 4);
@@ -170,8 +181,7 @@ int main(void)
   USART2->CR1 |= USART_CR1_UE;
 
 // start DMA
-  HAL_UART_Receive_DMA(&huart2, uart_rxBuffer, UART_RX_BUFFER_SIZE);
-
+  HAL_UART_Receive_DMA(&huart2, uart_buffers[activeBuffer].data, UART_RX_BUFFER_SIZE);
 // enable UART global interrupts
   HAL_NVIC_SetPriority(USART2_IRQn, 0, 0);
   NVIC_EnableIRQ(USART2_IRQn);
@@ -182,23 +192,39 @@ int main(void)
   initCanOnStart();
   while (1)
   {
-	slCanCheckCommand(command);
-	slcanOutputFlush();
 
-	if(rxFullFlag)
+	if(rxFullFlag && uart_buffers[activeBuffer].bufferCleared)
 	{
-		memset(uart_rxBuffer, 0 , UART_RX_BUFFER_SIZE); //clear the buffer
+		slCanProccesInputUART((const char*)&uart_buffers[!activeBuffer].data); //decode buffer content
+		memset(uart_buffers[!activeBuffer].data, 0 , UART_RX_BUFFER_SIZE); //clear the buffer
+		uart_buffers[!activeBuffer].bufferCleared = 1;
 		__HAL_UART_FLUSH_DRREGISTER(&huart2); //clear the register
-		HAL_UART_Receive_DMA(&huart2, uart_rxBuffer, UART_RX_BUFFER_SIZE); //resume DMA
+		HAL_UART_Receive_DMA(&huart2, uart_buffers[activeBuffer].data, UART_RX_BUFFER_SIZE); //resume DMA
+		uart_buffers[activeBuffer].bufferCleared = 0;
 		rxFullFlag = 0;
+		slCanCheckCommand(command);
+	}
+	if(!uart_buffers[activeBuffer].bufferCleared)
+	{
+		memset(uart_buffers[activeBuffer].data, 0 , UART_RX_BUFFER_SIZE);
+		uart_buffers[activeBuffer].bufferCleared = 1;
 	}
 
-	if (canRxFlags.flags.byte != 0)// && hdma_usart2_tx.State == HAL_DMA_STATE_READY) // potential fix to uart tx buffer overwriting
+	if (hUsbDeviceFS.dev_state != USBD_STATE_CONFIGURED)
+	{
+		slCanCheckCommand(command);
+	}
+
+	if (canRxFlags.flags.byte != 0 && hdma_usart2_tx.State == HAL_DMA_STATE_READY) // potential fix to uart tx buffer overwriting
 	{
 		slcanReciveCanFrame(hcan.pRxMsg);
 		canRxFlags.flags.fifo1 = 0;
 		HAL_CAN_Receive_IT(&hcan, CAN_FIFO0);
 	}
+
+	slcanOutputFlush();
+
+
 	if(HAL_GetTick() - lastLEDTick >= 250)
 	{
 		lastLEDTick = HAL_GetTick();
@@ -327,7 +353,7 @@ static void MX_IWDG_Init(void)
 static void MX_USART2_UART_Init(void)
 {
   huart2.Instance = USART2;
-  huart2.Init.BaudRate = 2000000;
+  huart2.Init.BaudRate = 4000000;
   huart2.Init.WordLength = UART_WORDLENGTH_8B;
   huart2.Init.StopBits = UART_STOPBITS_1;
   huart2.Init.Parity = UART_PARITY_NONE;
@@ -395,7 +421,8 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
 	uint32_t err = huart->ErrorCode;
 //	HAL_UART_Transmit(&huart2, sl_frame, sl_frame_len, 100);
-	HAL_UART_Receive_DMA(huart, uart_rxBuffer, UART_RX_BUFFER_SIZE); //resume DMA
+	NVIC_SystemReset();
+	HAL_UART_Receive_DMA(huart, uart_buffers[activeBuffer].data, UART_RX_BUFFER_SIZE); //resume DMA
 	UNUSED(err);
 }
 void HAL_CAN_ErrorCallback(CAN_HandleTypeDef *hcan)
@@ -412,7 +439,7 @@ void HAL_CAN_RxCpltCallback(CAN_HandleTypeDef* hcan)
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef * huart)
 {
 	rxFullFlag = 1;
-	slCanProccesInputUART((const char*)&uart_rxBuffer); //decode buffer content
+	activeBuffer = !activeBuffer;
 //	memset(uart_rxBuffer, 0 , UART_RX_BUFFER_SIZE); //clear the buffer
 //	HAL_UART_Receive_DMA(huart, uart_rxBuffer, UART_RX_BUFFER_SIZE); //resume DMA
 //	__HAL_UART_FLUSH_DRREGISTER(huart); //clear the register
