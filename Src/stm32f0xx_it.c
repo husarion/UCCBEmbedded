@@ -43,7 +43,8 @@ extern IWDG_HandleTypeDef hiwdg;
 extern PCD_HandleTypeDef hpcd_USB_FS;
 extern DMA_HandleTypeDef hdma_usart2_tx;
 extern DMA_HandleTypeDef hdma_usart2_rx;
-
+extern SPI_HandleTypeDef hspi1;
+extern DMA_HandleTypeDef hdma_spi1_tx;
 /******************************************************************************/
 /*            Cortex-M0 Processor Interruption and Exception Handlers         */
 /******************************************************************************/
@@ -111,7 +112,6 @@ void PendSV_Handler(void)
 void SysTick_Handler(void)
 {
   /* USER CODE BEGIN SysTick_IRQn 0 */
-
   /* USER CODE END SysTick_IRQn 0 */
   HAL_IncTick();
   HAL_SYSTICK_IRQHandler();
@@ -175,6 +175,16 @@ void USART2_IRQHandler(void)
 		HAL_UART_RxCpltCallback(&huart2);
 	}
 	HAL_UART_IRQHandler(&huart2);
+}
+
+void DMA1_Channel2_3_IRQHandler(void)
+{
+  HAL_DMA_IRQHandler(&hdma_spi1_tx);
+}
+
+void SPI1_IRQHandler(void)
+{
+  HAL_SPI_IRQHandler(&hspi1);
 }
 /* USER CODE END 1 */
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

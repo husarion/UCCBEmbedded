@@ -62,6 +62,14 @@
 #define CAN_MOD_Pin GPIO_PIN_4
 #define CAN_MOD_GPIO_Port GPIOB
 
+#define UART_RTS_Pin GPIO_PIN_1
+#define UART_RTS_GPIO_Port GPIOA
+
+#define UART_CTS_Pin GPIO_PIN_0
+#define UART_CTS_GPIO_Port GPIOA
+
+
+
 /* ########################## Assert Selection ############################## */
 /**
   * @brief Uncomment the line below to expanse the "assert_param" macro in the

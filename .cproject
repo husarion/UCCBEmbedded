@@ -35,7 +35,7 @@
 								<option id="com.atollic.truestudio.common_options.target.fpu.829683864" name="Floating point" superClass="com.atollic.truestudio.common_options.target.fpu" useByScannerDiscovery="false" value="com.atollic.truestudio.common_options.target.fpu.soft" valueType="enumerated"/>
 								<option id="com.atollic.truestudio.common_options.target.fpucore.1297069055" name="FPU" superClass="com.atollic.truestudio.common_options.target.fpucore" useByScannerDiscovery="false" value="None" valueType="enumerated"/>
 								<option id="com.atollic.truestudio.common_options.target.interwork.458539614" name="Mix ARM/Thumb" superClass="com.atollic.truestudio.common_options.target.interwork" useByScannerDiscovery="false"/>
-								<option id="com.atollic.truestudio.exe.debug.toolchain.as.debug.flags.1880247021" superClass="com.atollic.truestudio.exe.debug.toolchain.as.debug.flags" useByScannerDiscovery="false" value="com.atollic.truestudio.as.debug.flags.3" valueType="enumerated"/>
+								<option id="com.atollic.truestudio.exe.debug.toolchain.as.debug.flags.1880247021" name="Debug Level" superClass="com.atollic.truestudio.exe.debug.toolchain.as.debug.flags" useByScannerDiscovery="false" value="com.atollic.truestudio.as.debug.flags.3" valueType="enumerated"/>
 								<inputType id="com.atollic.truestudio.as.input.374932590" name="Input" superClass="com.atollic.truestudio.as.input"/>
 							</tool>
 							<tool command="arm-atollic-eabi-gcc -c " commandLinePattern="${COMMAND} ${FLAGS} ${OUTPUT_FLAG}${OUTPUT_PREFIX} ${OUTPUT} ${INPUTS}" id="com.atollic.truestudio.exe.debug.toolchain.gcc.1836874447" name="C Compiler" superClass="com.atollic.truestudio.exe.debug.toolchain.gcc">
@@ -192,7 +192,7 @@
 					</fileInfo>
 					<fileInfo id="com.atollic.truestudio.exe.debug.1518366166.168526124" name="stm32f0xx_hal_can.c" rcbsApplicability="disable" resourcePath="Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_can.c" toolsToInvoke="com.atollic.truestudio.exe.debug.toolchain.gcc.845876576.2078376726">
 						<tool id="com.atollic.truestudio.exe.debug.toolchain.gcc.845876576.2078376726" name="C Compiler" superClass="com.atollic.truestudio.exe.debug.toolchain.gcc.845876576">
-							<option id="com.atollic.truestudio.exe.debug.toolchain.gcc.optimization.level.785148083" name="Optimization Level" superClass="com.atollic.truestudio.exe.debug.toolchain.gcc.optimization.level" useByScannerDiscovery="false" value="com.atollic.truestudio.gcc.optimization.level.0fast" valueType="enumerated"/>
+							<option id="com.atollic.truestudio.exe.debug.toolchain.gcc.optimization.level.785148083" name="Optimization Level" superClass="com.atollic.truestudio.exe.debug.toolchain.gcc.optimization.level" useByScannerDiscovery="false" value="com.atollic.truestudio.gcc.optimization.level.0g" valueType="enumerated"/>
 							<inputType id="com.atollic.truestudio.gcc.input.443411472" superClass="com.atollic.truestudio.gcc.input"/>
 						</tool>
 						<tool customBuildStep="true" id="org.eclipse.cdt.managedbuilder.ui.rcbs.2030736630" name="Resource Custom Build Step">

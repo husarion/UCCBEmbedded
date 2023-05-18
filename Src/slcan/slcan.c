@@ -30,6 +30,7 @@ extern UART_HandleTypeDef huart2;
 extern USBD_HandleTypeDef hUsbDeviceFS;
 extern CAN_HandleTypeDef hcan;
 extern volatile int32_t serialNumber;
+extern void hUCCB_HandleBufferError();
 
 void initCanOnStart()
 {
@@ -445,7 +446,12 @@ uint8_t slCanCheckCommand(uint8_t *line)
 
    line[0] = 0;
    slcanSetOutputChar(result);
-   return 1;
+   if(result == SLCAN_BELL)
+   {
+	   hUCCB_HandleBufferError();
+	   memset(command, 0, sizeof(command));
+   }
+   return result;
 }
 
 /**
