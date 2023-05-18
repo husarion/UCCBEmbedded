@@ -156,7 +156,7 @@ int main(void)
 {
   /* USER CODE BEGIN 1 */
   serialNumber = TYPE_ID | (((*uid) << 8) & 0xFFFFFF00);
-  bootloaderSwitcher();
+//  bootloaderSwitcher();
   /* USER CODE END 1 */
 
   /* MCU Configuration----------------------------------------------------------*/
@@ -196,7 +196,6 @@ int main(void)
   HAL_CAN_Receive_IT(&hcan, CAN_FIFO0);
 
 // UART RX
-
 //enable CR character detection and disable UART RX interrupt
   USART2->CR1 &= ~USART_CR1_UE;
   USART2->CR2 |= USART_CR2_ADDM7;
@@ -207,9 +206,8 @@ int main(void)
   USART2->CR1 |= USART_CR1_UE;
 
 // start DMA
-  RTS_LOW();
-  HAL_UART_Receive_DMA(&huart2, uart_buffers[activeBuffer].data, UART_RX_BUFFER_SIZE);
-  HAL_SPI_Transmit_DMA(&hspi1, (uint8_t*) &strip_buffer, sizeof(struct strip_buffer));
+  HAL_UART_Receive_DMA(&huart2, uart_buffers[activeBuffer].data, UART_RX_BUFFER_SIZE); //UART
+  HAL_SPI_Transmit_DMA(&hspi1, (uint8_t*) &strip_buffer, sizeof(struct strip_buffer)); //SPI (led strip)
 
 // enable UART global interrupts
   HAL_NVIC_SetPriority(USART2_IRQn, 0, 0);
@@ -219,22 +217,25 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   initCanOnStart();
-  uint16_t counter = 0;
+
+  uint16_t counter = 0; //LED animation counter
 
   while (1)
   {
-	if(rxFullFlag == 0)	HAL_UART_Receive_DMA(&huart2, uart_buffers[activeBuffer].data, UART_RX_BUFFER_SIZE); //resume DMA
+	if(rxFullFlag == 0)	HAL_UART_Receive_DMA(&huart2, uart_buffers[activeBuffer].data, UART_RX_BUFFER_SIZE); //resume DMA if buffers cleared and ready for reception
 	if(rxFullFlag && uart_buffers[activeBuffer].bufferCleared)
 	{
-//		RTS_LOW();
 		HAL_UART_Receive_DMA(&huart2, uart_buffers[activeBuffer].data, UART_RX_BUFFER_SIZE); //resume DMA
 		uart_buffers[activeBuffer].bufferCleared = 0;
+
 		slCanProccesInputUART((const char*)&uart_buffers[!activeBuffer].data); //decode buffer content
+
 		memset(uart_buffers[!activeBuffer].data, 0 , UART_RX_BUFFER_SIZE); //clear the buffer
 		uart_buffers[!activeBuffer].bufferCleared = 1;
-		__HAL_UART_FLUSH_DRREGISTER(&huart2); //clear the register
+
+		__HAL_UART_FLUSH_DRREGISTER(&huart2); //clear the UART register
 		rxFullFlag = 0;
-		if(slCanCheckCommand(command) == 7)
+		if(slCanCheckCommand(command) == 7) //if something goes wrong try to fix it by cleaning the buffer again
 		{
 			HAL_UART_DMAStop(&huart2);
 			memset(uart_buffers[activeBuffer].data, 0 , UART_RX_BUFFER_SIZE); //clear the buffer
@@ -242,15 +243,13 @@ int main(void)
 		}
 
 	}
-	if(!uart_buffers[activeBuffer].bufferCleared)
+	if(!uart_buffers[activeBuffer].bufferCleared) //if currently selected buffer is not cleared
 	{
-//		RTS_HIGH();
 		memset(uart_buffers[activeBuffer].data, 0 , UART_RX_BUFFER_SIZE);
 		uart_buffers[activeBuffer].bufferCleared = 1;
-//		RTS_LOW();
 	}
 
-	if (hUsbDeviceFS.dev_state != USBD_STATE_CONFIGURED)
+	if (hUsbDeviceFS.dev_state != USBD_STATE_CONFIGURED) //if USB is connected, check it and not UART
 	{
 		slCanCheckCommand(command);
 	}
@@ -262,10 +261,10 @@ int main(void)
 		HAL_CAN_Receive_IT(&hcan, CAN_FIFO0);
 	}
 
-	slcanOutputFlush();
+	slcanOutputFlush(); //send data via UART or USB (if connected)
 
 
-	if(HAL_GetTick() - lastLEDTick >= 250)
+	if(HAL_GetTick() - lastLEDTick >= 250) // status led handling
 	{
 		lastLEDTick = HAL_GetTick();
 		switch(slcan_getState())
@@ -282,7 +281,7 @@ int main(void)
 		}
 	}
 
-	if(HAL_GetTick() - lastAPATick >= 18)
+	if(HAL_GetTick() - lastAPATick >= 18) // LED strip animation update
 	{
 	strip_buffer.endFrame = 0;
 	strip_buffer.startFrame = 0;
@@ -333,8 +332,6 @@ int main(void)
 		  counter++;
 		}
 		lastAPATick = HAL_GetTick();
-//	  HAL_SPI_Transmit_DMA(&hspi1, (uint8_t*) &strip_buffer, sizeof(struct strip_buffer));
-
 	}
 
   /* USER CODE END WHILE */
@@ -507,11 +504,11 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(CAN_MOD_GPIO_Port, &GPIO_InitStruct);
 
-	GPIO_InitStruct.Pin = GPIO_PIN_0;
-	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-	HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+//	GPIO_InitStruct.Pin = GPIO_PIN_0;
+//	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+//	GPIO_InitStruct.Pull = GPIO_NOPULL;
+//	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+//	HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
 }
 
@@ -552,7 +549,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 	uint32_t err = huart->ErrorCode;
 	UNUSED(err);
 }
-void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart) // peripheral error
 {
 	uint32_t err = huart->ErrorCode;
 //	HAL_UART_Transmit(&huart2, sl_frame, sl_frame_len, 100);
@@ -560,24 +557,21 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 	HAL_UART_Receive_DMA(huart, uart_buffers[activeBuffer].data, UART_RX_BUFFER_SIZE);
 	UNUSED(err);
 }
-void HAL_CAN_ErrorCallback(CAN_HandleTypeDef *hcan)
+void HAL_CAN_ErrorCallback(CAN_HandleTypeDef *hcan) //peripheral error
 {
-	HAL_CAN_Receive_IT(hcan, CAN_FIFO0);
+	HAL_CAN_Receive_IT(hcan, CAN_FIFO0); //ignore errors and try to receive normally
 }
 
-void HAL_CAN_RxCpltCallback(CAN_HandleTypeDef* hcan)
+void HAL_CAN_RxCpltCallback(CAN_HandleTypeDef* hcan) // new CAN frame is present
 {
 	canRxFlags.flags.fifo1 = 1;
 //    HAL_CAN_Receive_IT(hcan,CAN_FIFO0);
 }
 
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef * huart)
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef * huart) //new command received on UART
 {
-	rxFullFlag = 1;
-	activeBuffer = !activeBuffer;
-//	memset(uart_rxBuffer, 0 , UART_RX_BUFFER_SIZE); //clear the buffer
-//	HAL_UART_Receive_DMA(huart, uart_rxBuffer, UART_RX_BUFFER_SIZE); //resume DMA
-//	__HAL_UART_FLUSH_DRREGISTER(huart); //clear the register
+	rxFullFlag = 1; //indicate that data is ready to be parsed
+	activeBuffer = !activeBuffer; //swap rx buffers
 }
 void HAL_SPI_ErrorCallback(SPI_HandleTypeDef *hspi)
 {
