@@ -60,7 +60,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 CAN_HandleTypeDef hcan;
-
+TIM_HandleTypeDef htim3;
 IWDG_HandleTypeDef hiwdg;
 SPI_HandleTypeDef hspi1;
 UART_HandleTypeDef huart2;
@@ -95,6 +95,7 @@ void bootloaderSwitcher();
 #define RTS_HIGH() HAL_GPIO_WritePin(UART_RTS_GPIO_Port, UART_RTS_Pin, GPIO_PIN_SET)
 
 
+/* APA102 SPI Frame */
 typedef struct
 {
   union {
@@ -109,12 +110,6 @@ typedef struct
   };
 }Led;
 
-static struct strip_buffer{
-	  uint32_t startFrame;
-	  Led strip[NUM_LEDS];
-	  uint32_t endFrame;
-  }strip_buffer;
-
 typedef struct tcanRxFlags {
 	union {
 		struct {
@@ -126,17 +121,23 @@ typedef struct tcanRxFlags {
 	uint8_t activefifo;
 } tcanRx;
 
-CanTxMsgTypeDef CanTxBuffer;
-CanRxMsgTypeDef CanRxBuffer;
-
-
 typedef struct
 {
 	uint8_t bufferActive  :1;
 	uint8_t bufferCleared :1;
 	uint8_t data[UART_RX_BUFFER_SIZE];
 }uart_buffer;
-uint8_t activeBuffer = 0;
+
+
+static struct strip_buffer
+{
+  uint32_t startFrame;
+  Led strip[NUM_LEDS];
+  uint32_t endFrame;
+}strip_buffer;
+
+CanTxMsgTypeDef CanTxBuffer;
+CanRxMsgTypeDef CanRxBuffer;
 
 uart_buffer uart_buffers[2];
 
@@ -144,7 +145,11 @@ volatile tcanRx canRxFlags;
 volatile int32_t serialNumber;
 const uint32_t *uid = (uint32_t *)(UID_BASE + 4);
 static uint8_t rxFullFlag = 0;
+uint8_t msgPending = 0;
+uint8_t activeBuffer = 0;
 uint32_t lastLEDTick = 0, lastAPATick = 0;
+uint32_t errCode = 0;
+uint8_t rxCnt = 0;
 /* USER CODE END 0 */
 
 /**
@@ -155,7 +160,7 @@ uint32_t lastLEDTick = 0, lastAPATick = 0;
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-  serialNumber = TYPE_ID | (((*uid) << 8) & 0xFFFFFF00);
+	serialNumber = TYPE_ID | (((*uid) << 8) & 0xFFFFFF00);
 //  bootloaderSwitcher();
   /* USER CODE END 1 */
 
@@ -207,8 +212,7 @@ int main(void)
 
 // start DMA
   HAL_UART_Receive_DMA(&huart2, uart_buffers[activeBuffer].data, UART_RX_BUFFER_SIZE); //UART
-  HAL_SPI_Transmit_DMA(&hspi1, (uint8_t*) &strip_buffer, sizeof(struct strip_buffer)); //SPI (led strip)
-
+  HAL_SPI_Transmit_DMA(&hspi1, (uint8_t*)&strip_buffer, sizeof(struct strip_buffer)); //SPI (led strip)
 // enable UART global interrupts
   HAL_NVIC_SetPriority(USART2_IRQn, 0, 0);
   NVIC_EnableIRQ(USART2_IRQn);
@@ -217,37 +221,45 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   initCanOnStart();
-
   uint16_t counter = 0; //LED animation counter
 
   while (1)
   {
 	if(rxFullFlag == 0)	HAL_UART_Receive_DMA(&huart2, uart_buffers[activeBuffer].data, UART_RX_BUFFER_SIZE); //resume DMA if buffers cleared and ready for reception
-	if(rxFullFlag && uart_buffers[activeBuffer].bufferCleared)
+	if(rxFullFlag == 1)
 	{
-		HAL_UART_Receive_DMA(&huart2, uart_buffers[activeBuffer].data, UART_RX_BUFFER_SIZE); //resume DMA
-		uart_buffers[activeBuffer].bufferCleared = 0;
-
-		slCanProccesInputUART((const char*)&uart_buffers[!activeBuffer].data); //decode buffer content
-
-		memset(uart_buffers[!activeBuffer].data, 0 , UART_RX_BUFFER_SIZE); //clear the buffer
-		uart_buffers[!activeBuffer].bufferCleared = 1;
-
-		__HAL_UART_FLUSH_DRREGISTER(&huart2); //clear the UART register
+		slCanProccesInputUART((const char*)&uart_buffers[activeBuffer].data); //decode buffer content
 		rxFullFlag = 0;
-		if(slCanCheckCommand(command) == 7) //if something goes wrong try to fix it by cleaning the buffer again
-		{
-			HAL_UART_DMAStop(&huart2);
-			memset(uart_buffers[activeBuffer].data, 0 , UART_RX_BUFFER_SIZE); //clear the buffer
-			uart_buffers[activeBuffer].bufferCleared = 1;
-		}
-
+		__HAL_UART_FLUSH_DRREGISTER(&huart2); //clear the UART register
+		slCanCheckCommand(command);
+		HAL_UART_Receive_DMA(&huart2, uart_buffers[activeBuffer].data, UART_RX_BUFFER_SIZE);
 	}
-	if(!uart_buffers[activeBuffer].bufferCleared) //if currently selected buffer is not cleared
-	{
-		memset(uart_buffers[activeBuffer].data, 0 , UART_RX_BUFFER_SIZE);
-		uart_buffers[activeBuffer].bufferCleared = 1;
-	}
+//	if(rxFullFlag)
+//	{
+//		if(!uart_buffers[activeBuffer].bufferCleared) //if currently selected buffer is not cleared
+//		{
+//			memset(uart_buffers[activeBuffer].data, 0 , UART_RX_BUFFER_SIZE);
+//			uart_buffers[activeBuffer].bufferCleared = 1;
+//		}
+//
+//		HAL_UART_Receive_DMA(&huart2, uart_buffers[activeBuffer].data, UART_RX_BUFFER_SIZE); //resume DMA
+//		uart_buffers[activeBuffer].bufferCleared = 0;
+//
+//		slCanProccesInputUART((const char*)&uart_buffers[!activeBuffer].data); //decode buffer content
+//		msgPending = 0;
+//		memset(uart_buffers[!activeBuffer].data, 0 , UART_RX_BUFFER_SIZE); //clear the buffer
+//		uart_buffers[!activeBuffer].bufferCleared = 1;
+//
+//		__HAL_UART_FLUSH_DRREGISTER(&huart2); //clear the UART register
+//		rxFullFlag = 0;
+//		if(slCanCheckCommand(command) == 7) //if something goes wrong try to fix it by cleaning the buffer again
+//		{
+//			HAL_UART_DMAStop(&huart2);
+//			memset(uart_buffers[activeBuffer].data, 0 , UART_RX_BUFFER_SIZE); //clear the buffer
+//			uart_buffers[activeBuffer].bufferCleared = 1;
+//		}
+//
+//	}
 
 	if (hUsbDeviceFS.dev_state != USBD_STATE_CONFIGURED) //if USB is connected, check it and not UART
 	{
@@ -281,12 +293,13 @@ int main(void)
 		}
 	}
 
-	if(HAL_GetTick() - lastAPATick >= 18) // LED strip animation update
+#if 1
+	if(HAL_GetTick() - lastAPATick >= 15) // LED strip animation update
 	{
-	strip_buffer.endFrame = 0;
-	strip_buffer.startFrame = 0;
+		strip_buffer.endFrame = 0;
+		strip_buffer.startFrame = 0;
 
-	for (uint8_t i = 0; i < NUM_LEDS; i++)
+		for (uint8_t i = 0; i < NUM_LEDS; i++)
 		{
 
 		// Fade out colors
@@ -320,7 +333,7 @@ int main(void)
 		  // Set color to pixel buffer
 		  strip_buffer.strip[i].fields.red = (uint8_t)r;
 		  strip_buffer.strip[i].fields.green = (uint8_t)g;
-		  strip_buffer.strip[i].fields.blue = (uint8_t)g;
+		  strip_buffer.strip[i].fields.blue = (errCode & ERR_CODE_CAN) == ERR_CODE_CAN ? 0 : (uint8_t)g;
 		  strip_buffer.strip[i].fields.brightness =  (uint8_t)0xF;
 
 		}
@@ -333,6 +346,7 @@ int main(void)
 		}
 		lastAPATick = HAL_GetTick();
 	}
+#endif
 
   /* USER CODE END WHILE */
 
@@ -417,12 +431,12 @@ static void MX_CAN_Init(void)
   hcan.Init.TTCM = DISABLE;
   hcan.Init.ABOM = ENABLE;
   hcan.Init.AWUM = DISABLE;
-  hcan.Init.NART = ENABLE;
+  hcan.Init.NART = DISABLE;
   hcan.Init.RFLM = DISABLE;
   hcan.Init.TXFP = DISABLE;
   if (HAL_CAN_Init(&hcan) != HAL_OK)
   {
-    _Error_Handler(__FILE__, __LINE__);
+    _Error_Handler("CAN", 0);
   }
 
 }
@@ -453,7 +467,7 @@ static void MX_USART2_UART_Init(void)
   huart2.Init.Mode = UART_MODE_TX_RX;
   huart2.Init.HwFlowCtl = UART_HWCONTROL_RTS;
   huart2.Init.OverSampling = UART_OVERSAMPLING_8;
-  huart2.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart2.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_ENABLE;
 
   //!!!!!!!!!!!!!!!!!! CHECK RX/TX PINS ON OVERLAY!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -510,6 +524,11 @@ static void MX_GPIO_Init(void)
 //	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
 //	HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
+  	GPIO_InitStruct.Pin = GPIO_PIN_0;
+  	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  	GPIO_InitStruct.Pull = GPIO_NOPULL;
+  	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 }
 
 /* USER CODE BEGIN 4 */
@@ -531,7 +550,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_HIGH;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_64;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -542,6 +561,11 @@ static void MX_SPI1_Init(void)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
+}
+
+void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi)
+{
+	HAL_GPIO_TogglePin(LED_SEL_FR_GPIO_PORT, LED_SEL_FR_Pin); //switch LED bar between front and rear
 }
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
@@ -568,10 +592,15 @@ void HAL_CAN_RxCpltCallback(CAN_HandleTypeDef* hcan) // new CAN frame is present
 //    HAL_CAN_Receive_IT(hcan,CAN_FIFO0);
 }
 
+void HAL_CAN_TxCpltCallback(CAN_HandleTypeDef* hcan)
+{
+	msgPending = 0;
+}
+
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef * huart) //new command received on UART
 {
 	rxFullFlag = 1; //indicate that data is ready to be parsed
-	activeBuffer = !activeBuffer; //swap rx buffers
+//	activeBuffer = !activeBuffer; //swap rx buffers
 }
 void HAL_SPI_ErrorCallback(SPI_HandleTypeDef *hspi)
 {
@@ -589,9 +618,14 @@ void _Error_Handler(char *file, int line)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
-  while(1)
-  {
-  }
+	if(strcmp(file, "CAN") == 0)
+	{
+		errCode |= ERR_CODE_CAN;
+	}
+//	while(1)
+//	{
+//
+//	}
   /* USER CODE END Error_Handler_Debug */
 }
 

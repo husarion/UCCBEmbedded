@@ -68,6 +68,8 @@
 #define UART_CTS_Pin GPIO_PIN_0
 #define UART_CTS_GPIO_Port GPIOA
 
+#define LED_SEL_FR_GPIO_PORT GPIOB
+#define LED_SEL_FR_Pin		 GPIO_PIN_0
 
 
 /* ########################## Assert Selection ############################## */
@@ -80,7 +82,12 @@
 /* USER CODE BEGIN Private defines */
 #define LED_Pin GPIO_PIN_10
 #define LED_GPIO_Port GPIOB
+
 #define CAN_RX_BUFFER_SIZE 3
+
+#define ERR_CODE_CAN 1
+#define ERR_CODE_
+
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

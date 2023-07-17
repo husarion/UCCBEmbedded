@@ -25,7 +25,7 @@ static uint8_t UART_FLAG = 0;
 volatile uint8_t sl_frame_len=0;
 
 uint8_t sl_frame[32];
-
+uint8_t rxCnt_slcan;
 extern UART_HandleTypeDef huart2;
 extern USBD_HandleTypeDef hUsbDeviceFS;
 extern CAN_HandleTypeDef hcan;
@@ -286,6 +286,7 @@ uint8_t slCanCheckCommand(uint8_t *line)
                 slcanSetOutputChar('V');
                 slcanSetOutputAsHex(VERSION_HARDWARE_MAJOR);
                 slcanSetOutputAsHex(VERSION_HARDWARE_MINOR);
+                slcanSetOutputChar('h');
                 result = terminator;
             }
             break;
