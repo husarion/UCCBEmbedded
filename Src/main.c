@@ -595,7 +595,7 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart) // peripheral error
 	uint32_t err = huart->ErrorCode;
 //	HAL_UART_Transmit(&huart2, sl_frame, sl_frame_len, 100);
 //	NVIC_SystemReset();
-	HAL_UART_Receive_DMA(huart, uart_buffers[activeBuffer].data, UART_RX_BUFFER_SIZE);
+	HAL_UART_Receive_DMA(huart, uart_buffers[activeBuffer].data, UART_RX_BUFFER_SIZE); //ignore and continue to receive data
 	UNUSED(err);
 }
 void HAL_CAN_ErrorCallback(CAN_HandleTypeDef *hcan) //peripheral error
