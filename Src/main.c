@@ -55,6 +55,7 @@
 #include "usbd_cdc_if.h"
 #include "slcan/slcan.h"
 #include "slcan/slcan_additional.h"
+#include "husbus.h"
 //#include "apa102.h"
 /* USER CODE END Includes */
 
@@ -67,6 +68,7 @@ UART_HandleTypeDef huart2;
 DMA_HandleTypeDef hdma_usart2_tx;
 DMA_HandleTypeDef hdma_usart2_rx;
 DMA_HandleTypeDef hdma_spi1_tx;
+CRC_HandleTypeDef hcrc;
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
 
@@ -80,6 +82,7 @@ static void MX_USART2_UART_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_DMA_Init(void);
 static void MX_IWDG_Init(void);
+static void MX_CRC_Init(void);
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
 void bootloaderSwitcher();
@@ -87,13 +90,11 @@ void bootloaderSwitcher();
 
 /* USER CODE BEGIN 0 */
 
-#define UART_RX_BUFFER_SIZE    30
 #define TYPE_ID 0x16
 #define NUM_LEDS 46
 
 #define RTS_LOW() HAL_GPIO_WritePin(UART_RTS_GPIO_Port, UART_RTS_Pin, GPIO_PIN_RESET)
 #define RTS_HIGH() HAL_GPIO_WritePin(UART_RTS_GPIO_Port, UART_RTS_Pin, GPIO_PIN_SET)
-
 
 /* APA102 SPI Frame */
 typedef struct
@@ -121,12 +122,6 @@ typedef struct tcanRxFlags {
 	uint8_t activefifo;
 } tcanRx;
 
-typedef struct
-{
-	uint8_t bufferParsed  :1;
-	uint8_t bufferCleared :1;
-	uint8_t data[UART_RX_BUFFER_SIZE];
-}uart_buffer;
 
 
 static struct strip_buffer
@@ -144,14 +139,15 @@ uart_buffer uart_buffers[2];
 volatile tcanRx canRxFlags;
 volatile int32_t serialNumber;
 const uint32_t *uid = (uint32_t *)(UID_BASE + 4);
-static uint8_t rxFullFlag = 0;
+uint8_t rxFullFlag = 0;
 uint8_t msgPending = 0;
 uint8_t activeBuffer = 0;
 uint16_t counter = 0; //LED animation counter
 uint32_t lastLEDTick = 0, lastAPATick = 0;
 uint32_t errCode = 0;
 uint8_t rxCnt = 0;
-
+uint8_t husBufTx[HUSBUS_BUF_SIZE] = {0};
+uint8_t husMsgLen = 0;
 void handleCAN(void);
 void pantherLights(void);
 void toggleLED(void);
@@ -165,7 +161,7 @@ void toggleLED(void);
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-	serialNumber = TYPE_ID | (((*uid) << 8) & 0xFFFFFF00);
+ 	serialNumber = TYPE_ID | (((*uid) << 8) & 0xFFFFFF00);
 //  bootloaderSwitcher();
   /* USER CODE END 1 */
 
@@ -188,11 +184,14 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_CAN_Init();
+  MX_CRC_Init();
   MX_DMA_Init();
   MX_USART2_UART_Init();
   MX_SPI1_Init();
   MX_USB_DEVICE_Init();
+#ifndef IWDG_DISABLE
   MX_IWDG_Init();
+#endif
   /* USER CODE BEGIN 2 */
 
   hcan.pTxMsg = &CanTxBuffer;
@@ -207,16 +206,17 @@ int main(void)
 
 // UART RX
 //enable CR character detection and disable UART RX interrupt
+//zmienic character detection na dlugosc detection (1 bajt definiuje jak dluga bedzie ramka)
+//odbieramy 1 bajt(header) i ustawiamy dma na dlugosc zalezna od zawartosci headera
   USART2->CR1 &= ~USART_CR1_UE;
-  USART2->CR2 |= USART_CR2_ADDM7;
-  USART2->CR2 |= (uint32_t)(0x0D << USART_CR2_ADD_Pos);
-  USART2->CR1 |= USART_CR1_CMIE;
+//  USART2->CR2 |= (uint32_t)(0x0D << USART_CR2_ADD_Pos);
+//  USART2->CR1 |= USART_CR1_CMIE;
   USART2->CR1 &= ~USART_CR1_RXNEIE;
   HAL_Delay(1);
   USART2->CR1 |= USART_CR1_UE;
 
 // start DMA
-  HAL_UART_Receive_DMA(&huart2, uart_buffers[activeBuffer].data, UART_RX_BUFFER_SIZE); //UART
+//  HAL_UART_Receive_DMA(&huart2, uart_buffers[activeBuffer].data, UART_RX_BUFFER_SIZE); //UART
   HAL_SPI_Transmit_DMA(&hspi1, (uint8_t*)&strip_buffer, sizeof(struct strip_buffer)); //SPI (led strip)
 // enable UART global interrupts
   HAL_NVIC_SetPriority(USART2_IRQn, 0, 0);
@@ -226,7 +226,7 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   initCanOnStart();
-
+  Husbus_Init(husBufTx);
   while (1)
   {
 	  handleCAN();
@@ -235,7 +235,9 @@ int main(void)
   /* USER CODE END WHILE */
 
   /* USER CODE BEGIN 3 */
+#ifndef IWDG_DISABLE
 	HAL_IWDG_Refresh(&hiwdg);
+#endif
   }
   /* USER CODE END 3 */
 
@@ -418,18 +420,18 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void handleCAN(void)
 {
-	if(rxFullFlag == 0)
-	{
-		HAL_UART_Receive_DMA(&huart2, uart_buffers[activeBuffer].data, UART_RX_BUFFER_SIZE); //resume DMA if buffers cleared and ready for reception
-	}
-	if(rxFullFlag == 1)
-	{
-		rxFullFlag = 0;
-		memset(uart_buffers[!activeBuffer].data, 0 , UART_RX_BUFFER_SIZE);
-		uart_buffers[!activeBuffer].bufferCleared = 1;
-		__HAL_UART_FLUSH_DRREGISTER(&huart2); //clear the UART register
-		slCanCheckCommand(command);
-	}
+//	if(rxFullFlag == 0)
+//	{
+//		HAL_UART_Receive_DMA(&huart2, uart_buffers[activeBuffer].data, UART_RX_BUFFER_SIZE); //resume DMA if buffers cleared and ready for reception
+//	}
+//	if(rxFullFlag == 1)
+//	{
+//		rxFullFlag = 0;
+//		memset(uart_buffers[!activeBuffer].data, 0 , UART_RX_BUFFER_SIZE);
+//		uart_buffers[!activeBuffer].bufferCleared = 1;
+//		__HAL_UART_FLUSH_DRREGISTER(&huart2); //clear the UART register
+//		Husbus_ParseUART(command);
+//	}
 //	if(rxFullFlag)
 //	{
 //		if(!uart_buffers[activeBuffer].bufferCleared) //if currently selected buffer is not cleared
@@ -457,19 +459,23 @@ void handleCAN(void)
 //
 //	}
 
-	if (hUsbDeviceFS.dev_state != USBD_STATE_CONFIGURED) //if USB is connected, check it and not UART
+	if (hUsbDeviceFS.dev_state == USBD_STATE_CONFIGURED) //if USB is connected, check it and not UART
 	{
 		slCanCheckCommand(command);
+		if (canRxFlags.flags.byte != 0 )//&& hdma_usart2_tx.State == HAL_DMA_STATE_READY) // potential fix to uart tx buffer overwriting
+		{
+			slcanReciveCanFrame(hcan.pRxMsg);
+			canRxFlags.flags.fifo1 = 0;
+			HAL_CAN_Receive_IT(&hcan, CAN_FIFO0);
+		}
+		slcanOutputFlush(); //send data via UART or USB (if connected)
 	}
-
-	if (canRxFlags.flags.byte != 0 && hdma_usart2_tx.State == HAL_DMA_STATE_READY) // potential fix to uart tx buffer overwriting
+	else
 	{
-		slcanReciveCanFrame(hcan.pRxMsg);
-		canRxFlags.flags.fifo1 = 0;
-		HAL_CAN_Receive_IT(&hcan, CAN_FIFO0);
+		HusBus_Update();
+//		Husbus_ParseUART(command);
 	}
 
-	slcanOutputFlush(); //send data via UART or USB (if connected)
 
 }
 
@@ -484,8 +490,8 @@ void pantherLights(void)
 		{
 
 		// Fade out colors
-		  int r = strip_buffer.strip[i].fields.red - 3;
-		  int g = strip_buffer.strip[i].fields.green - 3;
+		  int r = strip_buffer.strip[i].fields.red - 2;
+		  int g = strip_buffer.strip[i].fields.green - 2;
 		  // Draw white lines
 		  if (i == counter - 0 || NUM_LEDS - i == (counter - 200) * 2 || NUM_LEDS - i == (counter - 200) * 2 - 1) {
 			r += 127;
@@ -555,6 +561,25 @@ void hUCCB_HandleBufferError()
 	HAL_UART_Receive_DMA(&huart2, uart_buffers[activeBuffer].data, UART_RX_BUFFER_SIZE);
 }
 
+/* CRC init function */
+static void MX_CRC_Init(void)
+{
+    __HAL_RCC_CRC_CLK_ENABLE();
+
+  hcrc.Instance = CRC;
+  hcrc.Init.DefaultPolynomialUse = DEFAULT_POLYNOMIAL_ENABLE;
+  hcrc.Init.CRCLength = CRC_POLYLENGTH_32B;
+  hcrc.Init.DefaultInitValueUse = DEFAULT_INIT_VALUE_ENABLE;
+  hcrc.Init.InputDataInversionMode = CRC_INPUTDATA_INVERSION_BYTE;
+  hcrc.Init.OutputDataInversionMode = CRC_OUTPUTDATA_INVERSION_ENABLE;
+  hcrc.InputDataFormat = CRC_INPUTDATA_FORMAT_BYTES;
+  if (HAL_CRC_Init(&hcrc) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+}
+
 /* SPI1 init function */
 static void MX_SPI1_Init(void)
 {
@@ -585,19 +610,6 @@ void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi)
 	HAL_GPIO_TogglePin(LED_SEL_FR_GPIO_PORT, LED_SEL_FR_Pin); //switch LED bar between front and rear
 }
 
-void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
-{
-	uint32_t err = huart->ErrorCode;
-	UNUSED(err);
-}
-void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart) // peripheral error
-{
-	uint32_t err = huart->ErrorCode;
-//	HAL_UART_Transmit(&huart2, sl_frame, sl_frame_len, 100);
-//	NVIC_SystemReset();
-	HAL_UART_Receive_DMA(huart, uart_buffers[activeBuffer].data, UART_RX_BUFFER_SIZE); //ignore and continue to receive data
-	UNUSED(err);
-}
 void HAL_CAN_ErrorCallback(CAN_HandleTypeDef *hcan) //peripheral error
 {
 	HAL_CAN_Receive_IT(hcan, CAN_FIFO0); //ignore errors and try to receive normally
@@ -606,6 +618,16 @@ void HAL_CAN_ErrorCallback(CAN_HandleTypeDef *hcan) //peripheral error
 void HAL_CAN_RxCpltCallback(CAN_HandleTypeDef* hcan) // new CAN frame is present
 {
 	canRxFlags.flags.fifo1 = 1;
+//	if (canRxFlags.flags.byte != 0)
+//			{
+				Husbus_ParseCanFrame(hcan->pRxMsg);
+//				canRxFlags.flags.fifo1 = 0;
+				if(HAL_DMA_GetState(&hdma_usart2_tx) == HAL_DMA_STATE_READY)
+				{
+					HAL_UART_Transmit_DMA(&huart2, husBufTx, 14);
+				}
+				HAL_CAN_Receive_IT(hcan, CAN_FIFO0);
+//			}
 //    HAL_CAN_Receive_IT(hcan,CAN_FIFO0);
 }
 
@@ -614,13 +636,6 @@ void HAL_CAN_TxCpltCallback(CAN_HandleTypeDef* hcan)
 	msgPending = 0;
 }
 
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef * huart) //new command received on UART
-{
-	rxFullFlag = 1; //indicate that data is ready to be parsed
-	slCanProccesInputUART((const char*)&uart_buffers[activeBuffer].data); //decode buffer content
-	activeBuffer = !activeBuffer; //swap rx buffers
-	HAL_UART_Receive_DMA(&huart2, uart_buffers[activeBuffer].data, UART_RX_BUFFER_SIZE);
-}
 void HAL_SPI_ErrorCallback(SPI_HandleTypeDef *hspi)
 {
 	__NOP();

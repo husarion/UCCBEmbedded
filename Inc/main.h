@@ -83,11 +83,28 @@
 #define LED_Pin GPIO_PIN_10
 #define LED_GPIO_Port GPIOB
 
+#define IWDG_DISABLE
+
 #define CAN_RX_BUFFER_SIZE 3
+#define UART_RX_BUFFER_SIZE    30
 
 #define ERR_CODE_CAN 1
 #define ERR_CODE_
 
+#define CRC_POL_POL
+#define CRC_CR_POLYSIZE_Pos      (3U)
+#define CRC_CR_POLYSIZE_Msk      (0x3UL << CRC_CR_POLYSIZE_Pos)                 /*!< 0x00000018 */
+#define CRC_CR_POLYSIZE          CRC_CR_POLYSIZE_Msk                           /*!< Polynomial size bits */
+#define CRC_CR_POLYSIZE_0        (0x1UL << CRC_CR_POLYSIZE_Pos)                 /*!< 0x00000008 */
+#define CRC_CR_POLYSIZE_1        (0x2UL << CRC_CR_POLYSIZE_Pos)                 /*!< 0x00000010 */
+#define CRC_POLYLENGTH_32B                  0x00000000U        /*!< Resort to a 32-bit long generating polynomial */
+#define CRC_POLYLENGTH_16B                  CRC_CR_POLYSIZE_0  /*!< Resort to a 16-bit long generating polynomial */
+#define CRC_POLYLENGTH_8B                   CRC_CR_POLYSIZE_1  /*!< Resort to a 8-bit long generating polynomial  */
+#define CRC_POLYLENGTH_7B                   CRC_CR_POLYSIZE    /*!< Resort to a 7-bit long generating polynomial  */
+#define HAL_CRC_LENGTH_32B     32U          /*!< 32-bit long CRC */
+#define HAL_CRC_LENGTH_16B     16U          /*!< 16-bit long CRC */
+#define HAL_CRC_LENGTH_8B       8U          /*!< 8-bit long CRC  */
+#define HAL_CRC_LENGTH_7B       7U          /*!< 7-bit long CRC  */
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

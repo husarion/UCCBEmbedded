@@ -16,8 +16,9 @@ HAL_StatusTypeDef CANInit(void)
 {
     while (HAL_CAN_Init(&hcan) == HAL_TIMEOUT)
     {
-
+#ifndef IWDG_DISABLE
     	HAL_IWDG_Refresh(&hiwdg);
+#endif
     }
     return HAL_OK;
 }

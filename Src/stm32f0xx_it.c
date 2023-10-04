@@ -167,13 +167,15 @@ extern UART_HandleTypeDef huart2;
 void USART2_IRQHandler(void)
 {
 	UART_HandleTypeDef * huart = &huart2;
+#ifndef IWDG_DISABLE
 	HAL_IWDG_Refresh(&hiwdg);
-	if((USART2->ISR & USART_ISR_CMF) == USART_ISR_CMF) //character match interrupt
-	{
-		USART2->ICR |= USART_ICR_CMCF;
-		HAL_UART_DMAStop(&huart2);
-		HAL_UART_RxCpltCallback(&huart2);
-	}
+#endif
+//	if((USART2->ISR & USART_ISR_CMF) == USART_ISR_CMF) //character match interrupt
+//	{
+//		USART2->ICR |= USART_ICR_CMCF;
+//		HAL_UART_DMAStop(&huart2);
+//		HAL_UART_RxCpltCallback(&huart2);
+//	}
 	HAL_UART_IRQHandler(&huart2);
 }
 

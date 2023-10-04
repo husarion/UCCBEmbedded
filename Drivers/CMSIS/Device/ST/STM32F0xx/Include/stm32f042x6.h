@@ -245,7 +245,7 @@ typedef struct
   __IO uint32_t CR;          /*!< CRC Control register,                        Address offset: 0x08 */ 
   uint32_t      RESERVED2;   /*!< Reserved,                                                    0x0C */
   __IO uint32_t INIT;        /*!< Initial CRC value register,                  Address offset: 0x10 */
-  __IO uint32_t RESERVED3;   /*!< Reserved,                                                    0x14 */
+  __IO uint32_t POL;   /*!< Reserved,                                                    0x14 */
 } CRC_TypeDef;
 
 /** 

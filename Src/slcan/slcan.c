@@ -97,7 +97,7 @@ void slcanOutputFlush(void)
 	{
 		if (hUsbDeviceFS.dev_state != USBD_STATE_CONFIGURED) // use auxiliary uart only if usb not connected
 		{
-			HAL_UART_Transmit_DMA(&huart2,sl_frame,sl_frame_len);
+//			HAL_UART_Transmit_DMA(&huart2,sl_frame,sl_frame_len);
 //			HAL_UART_Transmit(&huart2,sl_frame,sl_frame_len, 100);
 		}
 		else
