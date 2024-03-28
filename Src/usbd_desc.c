@@ -95,8 +95,8 @@
 #define USBD_LANGID_STRING     1033
 #define USBD_MANUFACTURER_STRING     "Husarion"
 #define USBD_PID_FS     22336
-#define USBD_PRODUCT_STRING_FS     "Husarion USB-CAN Interface"
-#define USBD_SERIALNUMBER_STRING_FS     "deadbeef"
+#define USBD_PRODUCT_STRING_FS     "Husarion CAN01 Module"
+#define USBD_SERIALNUMBER_STRING_FS     "c01 "
 #define USBD_CONFIGURATION_STRING_FS     "CDC Config"
 #define USBD_INTERFACE_STRING_FS     "CDC Interface"
 

@@ -154,7 +154,7 @@ int main(void)
   MX_GPIO_Init();
   MX_CAN_Init();
   MX_DMA_Init();
-  MX_USART2_UART_Init();
+//  MX_USART2_UART_Init();
   MX_USB_DEVICE_Init();
   MX_IWDG_Init();
   /* USER CODE BEGIN 2 */
@@ -172,57 +172,34 @@ int main(void)
 // UART RX
 
 //enable CR character detection and disable UART RX interrupt
-  USART2->CR1 &= ~USART_CR1_UE;
-  USART2->CR2 |= USART_CR2_ADDM7;
-  USART2->CR2 |= (uint32_t)(0x0D << USART_CR2_ADD_Pos);
-  USART2->CR1 |= USART_CR1_CMIE;
-  USART2->CR1 &= ~USART_CR1_RXNEIE;
-  HAL_Delay(1);
-  USART2->CR1 |= USART_CR1_UE;
+//  USART2->CR1 &= ~USART_CR1_UE;
+//  USART2->CR2 |= USART_CR2_ADDM7;
+//  USART2->CR2 |= (uint32_t)(0x0D << USART_CR2_ADD_Pos);
+//  USART2->CR1 |= USART_CR1_CMIE;
+//  USART2->CR1 &= ~USART_CR1_RXNEIE;
+//  HAL_Delay(1);
+//  USART2->CR1 |= USART_CR1_UE;
 
 // start DMA
-  HAL_UART_Receive_DMA(&huart2, uart_buffers[activeBuffer].data, UART_RX_BUFFER_SIZE);
+//  HAL_UART_Receive_DMA(&huart2, uart_buffers[activeBuffer].data, UART_RX_BUFFER_SIZE);
 // enable UART global interrupts
-  HAL_NVIC_SetPriority(USART2_IRQn, 0, 0);
-  NVIC_EnableIRQ(USART2_IRQn);
+//  HAL_NVIC_SetPriority(USART2_IRQn, 0, 0);
+//  NVIC_EnableIRQ(USART2_IRQn);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  initCanOnStart();
+//  initCanOnStart();
   while (1)
   {
 
-	if(rxFullFlag && uart_buffers[activeBuffer].bufferCleared)
-	{
-		slCanProccesInputUART((const char*)&uart_buffers[!activeBuffer].data); //decode buffer content
-		memset(uart_buffers[!activeBuffer].data, 0 , UART_RX_BUFFER_SIZE); //clear the buffer
-		uart_buffers[!activeBuffer].bufferCleared = 1;
-		__HAL_UART_FLUSH_DRREGISTER(&huart2); //clear the register
-		HAL_UART_Receive_DMA(&huart2, uart_buffers[activeBuffer].data, UART_RX_BUFFER_SIZE); //resume DMA
-		uart_buffers[activeBuffer].bufferCleared = 0;
-		rxFullFlag = 0;
-		slCanCheckCommand(command);
-	}
-	if(!uart_buffers[activeBuffer].bufferCleared)
-	{
-		memset(uart_buffers[activeBuffer].data, 0 , UART_RX_BUFFER_SIZE);
-		uart_buffers[activeBuffer].bufferCleared = 1;
-	}
-
-	if (hUsbDeviceFS.dev_state != USBD_STATE_CONFIGURED)
-	{
-		slCanCheckCommand(command);
-	}
-
-	if (canRxFlags.flags.byte != 0 && hdma_usart2_tx.State == HAL_DMA_STATE_READY) // potential fix to uart tx buffer overwriting
-	{
+	slCanCheckCommand(command);
+	slcanOutputFlush();
+	if (canRxFlags.flags.byte != 0) {
 		slcanReciveCanFrame(hcan.pRxMsg);
 		canRxFlags.flags.fifo1 = 0;
 		HAL_CAN_Receive_IT(&hcan, CAN_FIFO0);
 	}
-
-	slcanOutputFlush();
 
 
 	if(HAL_GetTick() - lastLEDTick >= 250)
